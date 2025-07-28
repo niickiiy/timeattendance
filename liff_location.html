@@ -23,6 +23,14 @@
     // ⭐️ ใส่ URL ของ Web App ที่ได้จาก Google Apps Script
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbye-mhN--2pE3xCd4bi4Y9KpDYdQV0NcwpntLQ_dXwAmROuo8TnYIguCeLBh394p_hSPA/exec';
 
+    // ฟังก์ชันสำหรับแสดงข้อผิดพลาดบน UI
+    function displayError(err) {
+      document.getElementById('status-text').innerText = 'เกิดข้อผิดพลาด!';
+      document.getElementById('status-text').classList.remove('processing');
+      document.getElementById('status-text').classList.add('error');
+      document.getElementById('error-message').innerText = err.message;
+    }
+
     async function main() {
       try {
         // 1. เริ่มต้น LIFF
@@ -42,55 +50,66 @@
         }
         document.getElementById('status-text').innerText = `กำลัง ${action}... \nกรุณากดยินยอมเพื่อแชร์ตำแหน่ง`;
 
-
         // 3. ขอตำแหน่งจากผู้ใช้
         navigator.geolocation.getCurrentPosition(
+          // Success Callback (เมื่อผู้ใช้ยินยอม)
           async (position) => {
-            // 4. เมื่อได้ตำแหน่งแล้ว
-            const lat = position.coords.latitude;
-            const lon = position.coords.longitude;
-            const profile = await liff.getProfile();
-            const userId = profile.userId;
+            // ================== ✨ จุดที่แก้ไข ✨ ==================
+            // เพิ่ม try...catch เพื่อดักจับ Error ที่ส่งมาจาก Apps Script
+            try {
+              // 4. เมื่อได้ตำแหน่งแล้ว
+              const lat = position.coords.latitude;
+              const lon = position.coords.longitude;
+              const profile = await liff.getProfile();
+              const userId = profile.userId;
 
-            document.getElementById('status-text').innerText = 'กำลังบันทึกข้อมูล...';
+              document.getElementById('status-text').innerText = 'กำลังบันทึกข้อมูล...';
 
-            // 5. ส่งข้อมูลไปที่ Google Apps Script
-            const response = await fetch(SCRIPT_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify({
-                userId: userId,
-                action: action,
-                latitude: lat,
-                longitude: lon
-              })
-            });
+              // 5. ส่งข้อมูลไปที่ Google Apps Script
+              const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                  userId: userId,
+                  action: action,
+                  latitude: lat,
+                  longitude: lon
+                })
+              });
 
-            const result = await response.json();
-            if (result.status !== 'success') {
-              throw new Error(result.message);
+              const result = await response.json();
+              
+              // ตรวจสอบสถานะที่ได้รับจาก Apps Script
+              if (result.status !== 'success') {
+                // หากไม่สำเร็จ ให้โยน Error พร้อมข้อความจาก Server
+                throw new Error(result.message);
+              }
+
+              // 6. แสดงผลลัพธ์และปิด LIFF
+              document.getElementById('status-text').innerText = 'บันทึกข้อมูลสำเร็จ!';
+              document.getElementById('status-text').classList.remove('processing');
+              document.getElementById('status-text').classList.add('success');
+
+              setTimeout(() => {
+                liff.closeWindow();
+              }, 1500); // หน่วงเวลา 1.5 วินาทีเพื่อให้ผู้ใช้เห็นข้อความ
+
+            } catch (err) {
+              // ดักจับ Error ที่เกิดขึ้น (เช่น จาก fetch หรือที่โยนมาเอง)
+              // และแสดงผลบนหน้าจอ
+              displayError(err);
             }
-
-            // 6. แสดงผลลัพธ์และปิด LIFF
-            document.getElementById('status-text').innerText = 'บันทึกข้อมูลสำเร็จ!';
-            document.getElementById('status-text').classList.remove('processing');
-            document.getElementById('status-text').classList.add('success');
-
-            setTimeout(() => {
-              liff.closeWindow();
-            }, 1500); // หน่วงเวลา 1.5 วินาทีเพื่อให้ผู้ใช้เห็นข้อความ
+            // ================== ✨ สิ้นสุดจุดที่แก้ไข ✨ ==================
           },
+          // Error Callback (เมื่อผู้ใช้ไม่ยินยอม หรือเกิดปัญหาในการขอตำแหน่ง)
           (error) => {
-            // กรณีผู้ใช้ไม่ยินยอมหรือเกิดข้อผิดพลาดในการขอตำแหน่ง
             throw new Error('ไม่สามารถเข้าถึงตำแหน่งได้: ' + error.message);
           }
         );
 
       } catch (err) {
-        document.getElementById('status-text').innerText = 'เกิดข้อผิดพลาด!';
-        document.getElementById('status-text').classList.remove('processing');
-        document.getElementById('status-text').classList.add('error');
-        document.getElementById('error-message').innerText = err.message;
+        // ดักจับ Error เริ่มต้น (เช่น LIFF init ไม่ผ่าน)
+        displayError(err);
       }
     }
 
